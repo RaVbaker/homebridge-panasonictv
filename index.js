@@ -38,12 +38,24 @@ function PanasonicTV(log, config) {
     .on('get', this.getChannel.bind(this))
     .on('set', this.setChannel.bind(this));
 
+  this.lightbulbService = new Service.Lightbulb(this.name + " Volume");
+
+  this.lightbulbService
+    .getCharacteristic(Characteristic.On)
+    .on('get', this.getMuteVolume.bind(this))
+    .on('set', this.setMuteVolume.bind(this));
+
+   this.lightbulbService
+    .addCharacteristic(new Characteristic.Brightness())
+    .on('get', this.getVolume.bind(this))
+    .on('set', this.setVolume.bind(this));
+
   // Init the panasonic controller
   this.tv = new PanasonicViera(this.HOST);
 }
 
 PanasonicTV.prototype.getServices = function() {
-  return [this.service];
+  return [this.service, this.lightbulbService];
 }
 
 PanasonicTV.prototype.getOn = function(callback) {
@@ -89,7 +101,7 @@ PanasonicTV.prototype.getVolume = function(callback) {
 
       if (state == 1) {
         self.tv.getVolume(function (data) {
-          var translatedVolume = (data / self.maxVolume) * 100;
+          var translatedVolume = Math.floor((data / self.maxVolume) * 100);
           self.volumeCallback(null, translatedVolume);
         });
       }
@@ -101,9 +113,22 @@ PanasonicTV.prototype.getVolume = function(callback) {
 
 PanasonicTV.prototype.setVolume = function(volume, callback) {
   // Here we don't care about the TV's powerstate. If it's off, then all calls time out or error..
-  var translatedVolume = (volume / 100) * this.maxVolume;
+  var translatedVolume = Math.floor((volume / 100) * this.maxVolume);
   this.tv.setVolume(translatedVolume);
   callback();
+}
+
+PanasonicTV.prototype.setMuteVolume = function(state, callback) {
+  // Here we don't care about the TV's powerstate. If it's off, then all calls time out or error..
+  this.tv.setMute(!state);
+  callback();
+}
+
+PanasonicTV.prototype.getMuteVolume = function(callback) {
+  // Here we don't care about the TV's powerstate. If it's off, then all calls time out or error..
+  this.tv.getMute(function(mute) {
+    callback(null, (mute ? false : true));
+  });
 }
 
 PanasonicTV.prototype.getChannel = function(callback) {
@@ -199,7 +224,7 @@ PanasonicTV.prototype.getPowerState = function(ipAddress, stateCallback) {
 function makeVolumeCharacteristic() {
 
   VolumeCharacteristic = function() {
-    Characteristic.call(this, 'Volume', '91288267-5678-49B2-8D22-F57BE995AA93');
+    Characteristic.call(this, 'Audio Volume', '00001001-0000-1000-8000-135D67EC4377'); // compatible with Elegato Eve App
     this.setProps({
       format: Characteristic.Formats.INT,
       unit: Characteristic.Units.PERCENTAGE,
