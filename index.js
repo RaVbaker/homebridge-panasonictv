@@ -20,6 +20,7 @@ function PanasonicTV(log, config) {
   this.name = config.name;
   this.HOST = config.ip;
   this.maxVolume = config.maxVolume || 12;
+  this.log("PanasonicTV init");
 
   this.service = new Service.Switch(this.name);
 
@@ -126,8 +127,17 @@ PanasonicTV.prototype.setMuteVolume = function(state, callback) {
 
 PanasonicTV.prototype.getMuteVolume = function(callback) {
   // Here we don't care about the TV's powerstate. If it's off, then all calls time out or error..
-  this.tv.getMute(function(mute) {
-    callback(null, (mute ? false : true));
+  var that = this;
+  this.getPowerState(this.HOST, function(state) {
+
+      if (state == 1) {
+        that.tv.getMute(function(mute) {
+          callback(null, (mute ? false : true));
+        });
+      }
+      else {
+        callback(null, false);
+      }
   });
 }
 
@@ -145,7 +155,7 @@ PanasonicTV.prototype.setChannel = function(channel, callback) {
 //  0 when the TV is off, or it's a TV that does not support the standby wake-up request(the request errors)
 //  1 when the TV is on (a normal 200 response is returned)
 PanasonicTV.prototype.getPowerState = function(ipAddress, stateCallback) {
-
+  var that = this;
   var path = "/dmr/control_0";
   var body = '<?xml version="1.0" encoding="utf-8"?>\n' +
              '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -173,6 +183,17 @@ PanasonicTV.prototype.getPowerState = function(ipAddress, stateCallback) {
   // available. Therefore we're maintaining state whether the callback is called
   // since you're only allowed to call the Homekit-callback once.
   var calledBack = false;
+  that.log("check getPowerState");
+  var hardTimeout = setTimeout(function() {
+    that.log("Hard connection Timeout");
+    if (!calledBack) {
+      stateCallback(-2);
+      calledBack = true;
+    }
+    else {
+      that.log("already called callback");
+    }
+  }, 2000);
 
   var req = http.request(post_options, function(res) {
     res.setEncoding('utf8');
@@ -180,6 +201,7 @@ PanasonicTV.prototype.getPowerState = function(ipAddress, stateCallback) {
       // do nothing here, but without attaching a 'data' event, the 'end' event is not called
     });
     res.on('end', function() {
+      clearTimeout(hardTimeout);
       if(res.statusCode == 200) {
         if (!calledBack) {
           stateCallback(1);
@@ -194,28 +216,31 @@ PanasonicTV.prototype.getPowerState = function(ipAddress, stateCallback) {
   });
 
  req.on('error', function(e) {
-    console.log('errored');
-    console.log(e);
+    clearTimeout(hardTimeout);
+    that.log('errored');
+    that.log(e);
     if (!calledBack) {
       stateCallback(0);
       calledBack = true;
     }
     else {
-      console.log ("already called callback");
+      that.log("already called callback");
     }
   });
   req.on('timeout', function() {
-    console.log('timed out');
+    clearTimeout(hardTimeout);
+    that.log('timed out');
     if (!calledBack) {
       stateCallback(0);
       calledBack = true;
     }
     else {
-      console.log ("already called callback");
+      that.log("already called callback");
     }
   });
 
-  req.setTimeout(2000);
+  req.setTimeout(1500);
+
 
   req.write(body);
   req.end();
